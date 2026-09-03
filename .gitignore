@@ -1,0 +1,19 @@
+# generated ringtones and previews
+ring1.bin
+ring2.bin
+ring3.bin
+*_8k.wav
+
+# compiler leftovers (GSRing.exe itself is committed on purpose)
+*.pdb
+*.obj
+
+# python
+__pycache__/
+*.py[cod]
+
+# editors / os
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
