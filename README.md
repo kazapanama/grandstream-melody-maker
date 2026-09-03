@@ -1,123 +1,120 @@
 # GSRing
 
-Turn any audio or video file into a `ring1.bin` ringtone for **Grandstream IP phones** — trim it
-on a waveform, hear exactly what the phone will play, download the file.
+Перетворює будь-яке аудіо чи відео на рінгтон `ring1.bin` для **IP-телефонів Grandstream**:
+обрізаєш по хвилі, чуєш, що саме заграє телефон, забираєш готовий файл.
 
-One 36 KB executable. No Python, no Node, no FFmpeg, no installer, no admin rights.
+Один файл на 36 КБ. Ні Python, ні Node, ні FFmpeg, ні інсталятора, ні прав адміністратора.
 
-*[Українська версія](README.uk.md) · the app's interface is in Ukrainian.*
+## Навіщо це
 
-![GSRing Studio](docs/screenshot.png)
+Grandstream приймає власні мелодії лише як `.bin` у недокументованому контейнері: 512 байт
+заголовка, далі сирий G.711 μ-law, 8 кГц, моно. Офіційний конвертер `ringtool.exe` — утиліта
+Texas Instruments початку 2000-х — має дві незручні межі:
 
-## Why this exists
+* читає **тільки 16-бітний PCM `.wav`**, тож кожен mp3 доводиться конвертувати окремо;
+* **не вміє обрізати взагалі** — бере перші 8, 16 або 24 секунди файлу, і все.
 
-Grandstream phones accept custom ringtones only as `.bin` files in an undocumented container:
-a 512-byte header followed by raw G.711 μ-law, 8 kHz, mono. The official converter
-(`ringtool.exe` — a Texas Instruments utility from the early 2000s) has two hard limits:
+GSRing робить усе в одному вікні: кидаєш mp3 чи mp4, витягуєш мишею потрібний фрагмент,
+отримуєш `.bin`, який телефон приймає.
 
-* it reads **nothing but 16-bit PCM `.wav`**, so every MP3 needs a separate conversion first;
-* it has **no trimming at all** — you get the first 8, 16 or 24 seconds of the file, and that's it.
+## Запуск
 
-GSRing does the whole thing in one window: drop in an MP3 or an MP4, drag out the exact
-fragment you want, and get a `.bin` the phone accepts.
+Подвійний клік по **`GSRing.exe`**. Це вся інсталяція.
 
-## Run it
+Сторінка застосунку вшита в exe. На старті вона розпаковується в `%LOCALAPPDATA%\GSRing`
+і відкривається у вікні браузера в режимі застосунку — без адресного рядка й вкладок.
+Усе — декодування, ресемплінг, μ-law, збірка заголовка — рахується локально в рушії, який
+і так є у Windows. **Жоден файл нікуди не надсилається.**
 
-Double-click **`GSRing.exe`**. That's the entire installation.
+Потрібно: Windows 10/11 (використовує вбудований .NET Framework і Edge). Якщо Edge немає,
+береться Chrome.
 
-The exe carries the app as an embedded HTML page. On start it unpacks the page to
-`%LOCALAPPDATA%\GSRing` and opens it in an app-mode browser window — no address bar, no tabs.
-Everything — decoding, resampling, μ-law encoding, header assembly — runs locally in the
-rendering engine Windows already ships. **No file ever leaves your machine.**
+`src/index.html` можна відкрити й напряму в будь-якому сучасному браузері або викласти на
+статичний хостинг — сторінка самодостатня й працює офлайн.
 
-Requirements: Windows 10/11 (it uses the built-in .NET Framework and Edge). Chrome is used
-instead if Edge is missing.
+## Що вміє
 
-You can also open `src/index.html` directly in any modern browser, or host it on any static
-hosting — it is a self-contained, offline page.
+* **Вхід:** усе, що декодує браузер — mp3, wav, m4a, aac, ogg, opus, flac, mp4, webm.
+* **Обрізка:** хвиля на всю ширину, виділення протягуванням, ручки початку й кінця,
+  перетягування регіону. Колесо — зум навколо курсора, Shift+колесо — прокрутка.
+* **Ліміт** 8 / 16 / 24 с діє під час перетягування: регіон не розтягнеться далі, а
+  протилежна межа лишається на місці.
+* **Прослуховування:** пробіл — виділене в оригінальній якості; «Як на телефоні» — те саме
+  вже після G.711 μ-law 8 кГц, тобто буквально те, що вийде з динаміка апарата.
+* **Обробка:** нормалізація піку до −1 dBFS, підсилення в дБ, fade in/out, опційний
+  телефонний фільтр 300–3400 Гц.
+* **Вихід:** `ring1.bin` / `ring2.bin` / `ring3.bin`, за потреби ще й проміжний WAV 8 кГц.
+  Розмір у заголовку й контрольна сума перевіряються перед видачею файлу.
 
-## What it does
+## Формат файлу
 
-* **Input:** anything the browser can decode — mp3, wav, m4a, aac, ogg, opus, flac, mp4, webm.
-* **Trimming:** full-width waveform, drag-select, start/end handles, draggable region.
-  Wheel zooms around the cursor, Shift+wheel scrolls.
-* **Length limit** of 8 / 16 / 24 s is enforced while dragging: the region refuses to stretch
-  further and the opposite edge stays put.
-* **Preview:** Space plays the selection at full quality; *"Як на телефоні"* plays it after
-  G.711 μ-law at 8 kHz — literally what will come out of the phone's speaker.
-* **Processing:** peak normalisation to −1 dBFS, gain in dB, fade in/out, optional
-  300–3400 Hz telephone band-pass.
-* **Output:** `ring1.bin` / `ring2.bin` / `ring3.bin`, plus an intermediate 8 kHz WAV if needed.
-  Header size and checksum are validated before the file is handed to you.
+Відновлено реверс-інжинірингом `ringtool.exe`. Заголовок 512 байт, далі сирий G.711 μ-law,
+8000 Гц, моно, 1 байт = 1 семпл.
 
-## The file format
-
-Reverse-engineered from `ringtool.exe`. 512-byte header, then raw G.711 μ-law,
-8000 Hz, mono, one byte per sample.
-
-| Offset | Type | Meaning |
-|--------|------|---------|
-| `0x000` | u32 BE | total file size in 16-bit words (`size / 2`) |
-| `0x004` | u16 BE | checksum: the sum of every u16 BE word in the file ≡ 0 (mod 2¹⁶) |
-| `0x006` | char[4] | `"1.1."` — version tag |
-| `0x00A` | u16 BE | year |
-| `0x00C`…`0x00F` | u8 ×4 | month, day, hour, minute |
-| `0x010` | char[] | `"ring.bin"`, zero-padded |
+| Зсув | Тип | Значення |
+|------|-----|----------|
+| `0x000` | u32 BE | розмір усього файлу в 16-бітних словах (`розмір / 2`) |
+| `0x004` | u16 BE | контрольна сума: сума всіх u16 BE слів файлу ≡ 0 (mod 2¹⁶) |
+| `0x006` | char[4] | `"1.1."` — версія |
+| `0x00A` | u16 BE | рік |
+| `0x00C`…`0x00F` | u8 ×4 | місяць, день, година, хвилина |
+| `0x010` | char[] | `"ring.bin"`, добито нулями |
 | `0x027` | u8 | `0xC8` |
-| `0x104` | u32 BE | duplicate of the size field at `0x000` |
+| `0x104` | u32 BE | дублікат поля розміру `0x000` |
 | `0x150` | u8 | `0x20` |
 | `0x200` | payload | G.711 μ-law |
 
-Two notes on the size field. It is **32-bit**: in files under 128 KB the upper half is zero,
-which is why it is easy to mistake for a 16-bit field with padding — but 24 seconds produce
-192512 bytes (96256 words), which no longer fits in 16 bits. And `ringtool.exe` writes its
-header into the same buffer as the audio, so it silently drops the last 512 samples (0.064 s);
-GSRing keeps the whole fragment and sizes the header correctly.
+Дві примітки про поле розміру. Воно **32-бітне**: у файлах до 128 КБ старша половина нульова,
+тому його легко сплутати з 16-бітним полем і доповненням — але 24 секунди дають 192512 байт
+(96256 слів), що в 16 біт уже не вміщується. А `ringtool.exe` пише заголовок у той самий
+буфер, що й аудіо, тому мовчки втрачає останні 512 семплів (0,064 с); GSRing зберігає весь
+фрагмент і коректно проставляє розмір.
 
-## How it was verified
+## Як це перевірено
 
-* Both implementations rebuild a reference `ring1.bin` produced by the original `ringtool.exe`
-  **byte for byte**, checksum included.
-* The μ-law encoder was compared against Python's `audioop` across all 65536 input values.
-* The full pipeline, the drag handles and the pixel accuracy of the selection were exercised
-  inside a real Chrome instance over the DevTools Protocol.
+* Обидві реалізації відтворюють еталонний `ring1.bin`, зроблений оригінальним `ringtool.exe`,
+  **байт-у-байт**, включно з контрольною сумою.
+* μ-law кодер звірено з `audioop` з Python на всіх 65536 вхідних значеннях.
+* Повний конвеєр, перетягування ручок і піксельну точність виділення прогнано в справжньому
+  Chrome через DevTools Protocol.
 
-One caveat: 8 and 16 second output is checked against a reference file from the original tool.
-24 seconds exceeds the size of any reference available, so that mode rests on the format
-reading above — worth a quick test on the actual phone.
+Одне застереження: 8 і 16 секунд звірені з еталонним файлом від оригінальної утиліти.
+24 секунди виходять за розмір будь-якого доступного еталона, тож цей режим спирається на
+прочитання формату вище — варто перевірити на самому апараті.
 
-## Building
+## Перезбірка
 
-Run **`build.cmd`**. It uses the C# compiler that ships with Windows (.NET Framework) — there
-is nothing to install. Rebuild after editing `src/index.html` or `src/GSRing.cs`.
+Запусти **`build.cmd`**. Він використовує компілятор C#, що входить до складу Windows
+(.NET Framework), — ставити нічого не треба. Перезбирати після правок у `src/index.html`
+або `src/GSRing.cs`.
 
-## Command line (optional)
+## Командний рядок (необов'язково)
 
-`src/gsring.py` is a standalone CLI for batch work and for formats browsers can't read
-(mkv, avi, wma). Python 3.10+, standard library only — no `requirements.txt` needed —
-plus `ffmpeg` on `PATH`.
+`src/gsring.py` — окремий CLI для пакетної роботи й форматів, які браузер не читає
+(mkv, avi, wma). Python 3.10+, лише стандартна бібліотека — `requirements.txt` не потрібен —
+плюс `ffmpeg` у `PATH`.
 
 ```bash
-python src/gsring.py song.mp3  -o ring1.bin -s 42 -l 16     # 16 s starting at 0:42
+python src/gsring.py song.mp3  -o ring1.bin -s 42 -l 16     # 16 с починаючи з 0:42
 python src/gsring.py video.mp4 -o ring2.bin --phone-filter --gain 3
-python src/gsring.py ring1.bin --inspect                    # dump an existing .bin
+python src/gsring.py ring1.bin --inspect                    # розібрати готовий .bin
 ```
 
-## Getting it onto the phone
+## Заливання на телефон
 
-Phone web UI → **Maintenance → Upgrade and Provisioning → Ring Tone**, or drop `ring1.bin` on
-your TFTP/HTTP provisioning server. Then pick Custom Ring Tone 1/2/3 on the handset.
+Веб-інтерфейс апарата → **Maintenance → Upgrade and Provisioning → Ring Tone**, або покласти
+`ring1.bin` на TFTP/HTTP-сервер провізіонінгу. Далі на телефоні обрати Custom Ring Tone 1/2/3.
 
-## Repository layout
+## Склад репозиторію
 
-| Path | Role |
+| Шлях | Роль |
 |------|------|
-| `GSRing.exe` | the shipped application |
-| `src/index.html` | the app itself; embedded into the exe, works standalone too |
-| `src/GSRing.cs` | the launcher that hosts the page |
-| `src/gsring.py` | optional CLI |
-| `build.cmd` | rebuild script |
+| `GSRing.exe` | готовий застосунок |
+| `src/index.html` | сама апка; вшита в exe, працює й окремо |
+| `src/GSRing.cs` | запускач, який відкриває сторінку |
+| `src/gsring.py` | необов'язковий CLI |
+| `build.cmd` | скрипт перезбірки |
 
-## License
+## Ліцензія
 
-MIT — see [LICENSE](LICENSE).
+MIT — див. [LICENSE](LICENSE).
