@@ -4,7 +4,8 @@ ring2.bin
 ring3.bin
 *_8k.wav
 
-# compiler leftovers (GSRing.exe itself is committed on purpose)
+# build output (published in GitHub Releases) and compiler leftovers
+GSRing.exe
 *.pdb
 *.obj
 

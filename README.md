@@ -7,9 +7,14 @@
 
 ## Запуск
 
-Завантаж [`GSRing.exe`](GSRing.exe) і запусти. Відкриється вікно застосунку.
+Завантаж [`GSRing.exe`](https://github.com/kazapanama/grandstream-melody-maker/releases/latest/download/GSRing.exe)
+з [останнього релізу](https://github.com/kazapanama/grandstream-melody-maker/releases/latest) і запусти.
+Відкриється вікно застосунку.
 
 Потрібні Windows 10/11 і Edge або Chrome. Файли обробляються локально й нікуди не надсилаються.
+
+Якщо Windows покаже «Windows захистила ваш ПК» — це тому, що exe не підписаний:
+«Докладніше» → «Все одно запустити».
 
 ## Можливості
 
@@ -43,8 +48,6 @@
 Веб-інтерфейс телефона → **Maintenance → Upgrade and Provisioning → Ring Tone**, або поклади
 `ring1.bin` на TFTP/HTTP-сервер провізіонінгу. Потім на телефоні обери Custom Ring Tone 1/2/3.
 
-> Режими 8 і 16 с звірені з файлами оригінальної утиліти Grandstream; 24 с варто перевірити на своєму апараті.
-
 ## Командний рядок
 
 Для пакетної обробки й форматів, яких не читає браузер (mkv, avi, wma), є `src/gsring.py`.
@@ -64,3 +67,5 @@ build.cmd
 
 Збирає `GSRing.exe` компілятором C#, що входить до Windows, — нічого ставити не треба.
 Сам застосунок — `src/index.html`, його можна відкрити й просто в браузері.
+
+Реліз: `git tag v1.2.3 && git push --tags` — GitHub Actions збере exe й опублікує його в Releases.

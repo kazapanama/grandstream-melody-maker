@@ -831,9 +831,6 @@ $("bMake").onclick = async () => {
     log(`✔ ${S.outName} — ${bin.length} байт · ${r.seconds.toFixed(2)} с · пік ${r.peakDb.toFixed(1)} dBFS · `
       + `сума ${chk.checksumOk ? "OK" : "ПОМИЛКА"} · розмір у заголовку ${chk.sizeOk ? "OK" : "ПОМИЛКА"}`,
       chk.checksumOk && chk.sizeOk ? "ok" : "err");
-    if (bin.length > 131070)
-      log("   Файл більший за 128 КБ — поле розміру задіює всі 32 біти. "
-        + "8 і 16 с звірені з еталоном оригіналу, 24 с варто перевірити на апараті.", "warn");
   } catch (e) { log("Помилка: " + e.message, "err"); }
   $("bMake").disabled = false;
 };
