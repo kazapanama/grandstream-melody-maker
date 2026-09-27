@@ -38,7 +38,7 @@
   .wave canvas{position:absolute;inset:0;width:100%;height:100%}
   .shade{position:absolute;top:0;bottom:0;background:rgba(10,11,15,.62);pointer-events:none}
   #region{position:absolute;top:0;bottom:0;background:rgba(77,163,255,.13);
-          border-left:2px solid var(--accent);border-right:2px solid var(--accent);cursor:grab}
+          border-left:2px solid var(--accent);border-right:2px solid var(--accent)}
   #region.drag{cursor:grabbing}
   .handle{position:absolute;top:0;bottom:0;width:14px;cursor:ew-resize}
   .handle::after{content:"";position:absolute;top:50%;transform:translateY(-50%);
@@ -47,7 +47,15 @@
   .h-l{left:-8px} .h-r{right:-8px}
   #playhead{position:absolute;top:0;bottom:0;width:1px;background:#fff;box-shadow:0 0 6px rgba(255,255,255,.7);
             pointer-events:none;display:none}
-  .ruler{width:100%;height:22px;display:block;margin-top:4px}
+  /* курсор — звідки грає пробіл; жовтий трикутник зверху, щоб не губився на хвилі */
+  #cursor{position:absolute;top:0;bottom:0;width:1px;background:var(--warn);opacity:.9;pointer-events:none;display:none}
+  #cursor::before{content:"";position:absolute;top:0;left:-4px;border:4.5px solid transparent;
+                  border-top:7px solid var(--warn);border-bottom:0}
+  #hover{position:absolute;top:0;bottom:0;width:1px;background:rgba(255,255,255,.3);pointer-events:none;display:none}
+  #hover span{position:absolute;bottom:5px;left:6px;padding:1px 6px;border-radius:4px;white-space:nowrap;
+              font:11.5px Consolas,monospace;color:var(--ink);background:rgba(14,16,22,.88)}
+  #hover.flip span{left:auto;right:6px}
+  .ruler{width:100%;height:22px;display:block;margin-top:4px;cursor:pointer}
   .selinfo{display:flex;gap:18px;flex-wrap:wrap;align-items:center;margin-top:10px;color:var(--dim);font-size:13px}
   .selinfo b{color:var(--ink);font-variant-numeric:tabular-nums}
 
@@ -61,6 +69,7 @@
   button.primary{background:var(--accent2);border-color:var(--accent2);font-weight:600}
   button.primary:hover:not(:disabled){background:#3a82ea;border-color:#3a82ea}
   button.icon{padding:8px 11px}
+  #bPause{min-width:128px}                 /* підпис міняється — кнопки поруч не повинні стрибати */
   .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
   .row+.row{margin-top:10px}
   .spacer{flex:1}
@@ -105,6 +114,8 @@
         <div class="shade" id="shadeL"></div>
         <div class="shade" id="shadeR"></div>
         <div id="region"><div class="handle h-l"></div><div class="handle h-r"></div></div>
+        <div id="cursor"></div>
+        <div id="hover"><span></span></div>
         <div id="playhead"></div>
       </div>
       <canvas class="ruler" id="rulerCv"></canvas>
@@ -113,14 +124,18 @@
         <span>Початок <b id="iStart">0:00.0</b></span>
         <span>Кінець <b id="iEnd">0:16.0</b></span>
         <span>Тривалість <b id="iDur">16.0 с</b></span>
+        <span>Позиція <b id="iPos">0:00.0</b></span>
         <span class="spacer"></span>
         <span class="badge" id="iFile">—</span>
       </div>
 
       <div class="row" style="margin-top:12px">
-        <button id="bPlay" class="icon" title="Пробіл">▶ Грати виділене</button>
+        <button id="bPlay" class="icon">▶ Грати виділене</button>
         <button id="bPhone" class="icon">🎧 Як на телефоні</button>
-        <button id="bStop" class="icon">■</button>
+        <button id="bPause" class="icon" title="Клавіша P">▶ З курсора</button>
+        <button id="bStop" class="icon" title="Пробіл / Esc">■</button>
+        <button id="bSetStart" class="icon" title="Клавіша [ — початок у поточній позиції">⇤ Початок тут</button>
+        <button id="bSetEnd" class="icon" title="Клавіша ] — кінець у поточній позиції">Кінець тут ⇥</button>
         <span class="spacer"></span>
         <button id="bZoomSel" class="icon">Зум до виділення</button>
         <button id="bZoomOut" class="icon">−</button>
@@ -137,7 +152,11 @@
           </div>
         </div>
       </div>
-      <div class="hint">Тягни ручки або виділяй мишею просто по хвилі · колесо — зум, Shift+колесо — прокрутка · пробіл — прослухати</div>
+      <div class="hint"><b>Клік</b> по хвилі чи шкалі — слухати з цього місця (до кінця виділення, а за ним — далі по файлу) ·
+        пробіл — ще раз звідти ж / стоп · <b>P</b> — пауза / далі · <b>[</b> / <b>]</b> — початок / кінець там, де зараз грає ·
+        після зсуву межі звучить саме вона: початок — з нього, кінець — останні 3 с перед ним<br>
+        Тягни ручки, саме виділення чи по порожньому місцю · Ctrl+Z — скасувати зміну меж ·
+        колесо — зум, Shift+колесо — прокрутка</div>
     </div>
 
     <div class="card">
@@ -302,10 +321,12 @@ const fmt = t => {
 const S = {
   file: null, buf: null, peaks: null, peakBlock: 256,
   view: { start: 0, dur: 1 },
-  sel: { start: 0, end: 16 },
+  sel: { start: 0, end: 16 }, hist: [],
   maxLen: 16, outName: "ring1.bin",
-  ac: null, src: null, playT0: 0, playFrom: 0, playing: false, raf: 0,
+  cursor: 0,                          // звідки грає пробіл: місце останнього кліку / прослуховування
+  ac: null, src: null, playT0: 0, playFrom: 0, playing: false, raf: 0, phSeen: false,
 };
+const PREROLL = 3;                    // скільки секунд перед кінцем грати, коли рухаєш кінець
 
 /* ------------------------------------------------------------------ вхід */
 
@@ -338,6 +359,7 @@ async function loadFile(f) {
     buildPeaks(buf);
     S.view = { start: 0, dur: buf.duration };
     S.sel = { start: 0, end: Math.min(S.maxLen, buf.duration) };
+    S.hist = []; S.cursor = 0;
     $("editor").classList.remove("hidden");
     $("iFile").textContent = `${f.name} · ${fmt(buf.duration)} · ${buf.sampleRate} Гц · ${buf.numberOfChannels === 1 ? "моно" : "стерео"}`;
     layout(); redraw();
@@ -446,6 +468,13 @@ function syncDom() {
   $("iDur").textContent = (S.sel.end - S.sel.start).toFixed(1) + " с";
   $("nStart").value = S.sel.start.toFixed(2);
   $("nEnd").value = S.sel.end.toFixed(2);
+  syncCursor();
+}
+function syncCursor() {
+  const x = t2x(S.cursor), c = $("cursor");
+  c.style.display = (x >= 0 && x <= $("waveWrap").clientWidth) ? "block" : "none";
+  c.style.left = x + "px";
+  if (!S.playing) $("iPos").textContent = fmt(S.cursor);
 }
 const redraw = () => { drawWave(); drawRuler(); syncDom(); };
 
@@ -467,39 +496,92 @@ const wrap = $("waveWrap");
 // координату миші треба міряти від внутрішнього краю (без рамки) — так само,
 // як t2x/x2t рахують від clientWidth; інакше клік промахується на 1–2 px
 const localX = e => e.clientX - wrap.getBoundingClientRect().left - wrap.clientLeft;
+
+// Ctrl+Z: клік тепер грає, а не виділяє, але смикнута рука все одно може зсунути межу
+function remember() {
+  const last = S.hist[S.hist.length - 1];
+  if (last && last.start === S.sel.start && last.end === S.sel.end) return;
+  S.hist.push({ ...S.sel });
+  if (S.hist.length > 200) S.hist.shift();
+}
+function undo() {
+  const p = S.hist.pop();
+  if (!p) return;
+  S.sel = p; S.cache = null;
+  redraw();
+}
+
+function showHover(x) {
+  const h = $("hover");
+  h.style.display = "block";
+  h.style.left = x + "px";
+  h.classList.toggle("flip", x > wrap.clientWidth - 70);
+  h.firstChild.textContent = fmt(x2t(x));
+}
+
+// Поки зсув менший за CLICK_PX — це клік (слухати звідси); далі — перетягування.
+// part: start/end — ручки, move — саме виділення, new — порожнє місце (нове виділення)
+const CLICK_PX = 4;
 let drag = null;
 wrap.addEventListener("pointerdown", e => {
-  if (!S.buf) return;
-  const t = x2t(localX(e));
+  if (!S.buf || e.button !== 0) return;
   const cls = e.target.className || "";
+  const part = cls.includes("h-l") ? "start" : cls.includes("h-r") ? "end"
+             : e.target.id === "region" ? "move" : "new";
+  const x = localX(e), t = x2t(x);
   wrap.setPointerCapture(e.pointerId);
-  if (cls.includes("h-l")) drag = { mode: "start" };
-  else if (cls.includes("h-r")) drag = { mode: "end" };
-  else if (e.target.id === "region") {
-    drag = { mode: "move", grab: t - S.sel.start, len: S.sel.end - S.sel.start };
-    $("region").classList.add("drag");
-  } else {
-    S.sel.start = t; S.sel.end = t + .05; clampSel("end");
-    drag = { mode: "end" };
-  }
-  redraw();
+  // ручку можна вхопити за будь-яку точку її 14 px — межа не стрибає під курсор
+  drag = { part, x0: x, t0: t, moved: false,
+           off: part === "start" ? S.sel.start - t : part === "end" ? S.sel.end - t : 0 };
 });
 wrap.addEventListener("pointermove", e => {
+  if (!S.buf) return;
+  const x = localX(e);
+  showHover(x);
   if (!drag) return;
-  const t = x2t(localX(e));
-  if (drag.mode === "start") { S.sel.start = Math.min(t, S.sel.end - .05); clampSel("start"); }
-  else if (drag.mode === "end") { S.sel.end = Math.max(t, S.sel.start + .05); clampSel("end"); }
-  else {
-    S.sel.start = t - drag.grab; S.sel.end = S.sel.start + drag.len;
-    if (S.sel.start < 0) { S.sel.start = 0; S.sel.end = drag.len; }
-    if (S.sel.end > S.buf.duration) { S.sel.end = S.buf.duration; S.sel.start = S.sel.end - drag.len; }
-    clampSel("end");
+  if (!drag.moved) {
+    if (Math.abs(x - drag.x0) < CLICK_PX) return;
+    drag.moved = true;
+    remember(); stop();
+    if (drag.part === "move") {
+      drag.grab = drag.t0 - S.sel.start; drag.len = S.sel.end - S.sel.start;
+      $("region").classList.add("drag");
+    }
+  }
+  const t = x2t(x) + drag.off;
+  switch (drag.part) {
+    case "start":
+      S.sel.start = Math.min(t, S.sel.end - .05); clampSel("start"); drag.edge = "start"; break;
+    case "end":
+      S.sel.end = Math.max(t, S.sel.start + .05); clampSel("end"); drag.edge = "end"; break;
+    case "new":                                  // тягнути можна в обидва боки від точки натискання
+      if (t >= drag.t0) { S.sel.start = drag.t0; S.sel.end = Math.max(t, drag.t0 + .05); clampSel("end"); drag.edge = "end"; }
+      else { S.sel.start = t; S.sel.end = drag.t0; clampSel("start"); drag.edge = "start"; }
+      break;
+    case "move":
+      S.sel.start = t - drag.grab; S.sel.end = S.sel.start + drag.len;
+      if (S.sel.start < 0) { S.sel.start = 0; S.sel.end = drag.len; }
+      if (S.sel.end > S.buf.duration) { S.sel.end = S.buf.duration; S.sel.start = S.sel.end - drag.len; }
+      clampSel("end"); drag.edge = "start";
+      break;
   }
   redraw();
 });
-["pointerup", "pointercancel"].forEach(ev => wrap.addEventListener(ev, () => {
+wrap.addEventListener("pointerup", () => {
+  if (!drag) return;
+  const d = drag;
   drag = null; $("region").classList.remove("drag");
-}));
+  if (d.moved) previewEdge(d.edge);              // почути межу, яку щойно пересунув
+  else if (d.part === "start" || d.part === "end") previewEdge(d.part);
+  else playAt(d.t0);
+});
+wrap.addEventListener("pointercancel", () => { drag = null; $("region").classList.remove("drag"); });
+wrap.addEventListener("pointerleave", () => { if (!drag) $("hover").style.display = "none"; });
+
+$("rulerCv").addEventListener("pointerdown", e => {
+  if (!S.buf || e.button !== 0) return;
+  playAt(x2t(e.clientX - $("rulerCv").getBoundingClientRect().left - wrap.clientLeft));
+});
 
 wrap.addEventListener("wheel", e => {
   if (!S.buf) return;
@@ -536,21 +618,54 @@ $("segLen").onclick = e => {
   const b = e.target.closest("button"); if (!b) return;
   [...e.currentTarget.children].forEach(x => x.classList.toggle("on", x === b));
   S.maxLen = +b.dataset.len;
-  clampSel("end"); redraw();
+  remember(); clampSel("end"); redraw();
 };
 $("segOut").onclick = e => {
   const b = e.target.closest("button"); if (!b) return;
   [...e.currentTarget.children].forEach(x => x.classList.toggle("on", x === b));
   S.outName = b.dataset.name;
 };
-$("nStart").onchange = e => { S.sel.start = +e.target.value || 0; clampSel("end"); redraw(); };
-$("nEnd").onchange = e => { S.sel.end = +e.target.value || 0; clampSel("start"); redraw(); };
+// стрілки/спінер у полях кроком 0,1 с — і одразу чути результат
+$("nStart").onchange = e => {
+  remember(); S.sel.start = +e.target.value || 0; clampSel("end"); redraw(); previewEdge("start");
+};
+$("nEnd").onchange = e => {
+  remember(); S.sel.end = +e.target.value || 0; clampSel("start"); redraw(); previewEdge("end");
+};
 ["cNorm", "cPhone", "nFadeIn", "nFadeOut", "nGain"].forEach(id => $(id).onchange = () => S.cache = null);
 
+// поточна позиція: де грає зараз, а якщо тиша — курсор
+const nowPos = () => S.playing ? S.playFrom + (S.ac.currentTime - S.playT0) : S.cursor;
+
+// [ / ] — поставити межу туди, де грає. Явно вказана межа головна: під ліміт підлаштовується протилежна.
+function setEdgeHere(edge) {
+  if (!S.buf) return;
+  const p = nowPos(), len = S.sel.end - S.sel.start;
+  remember();
+  if (edge === "start") {
+    if (p >= S.sel.end - .05) S.sel.end = p + len;         // за кінцем — несемо виділення цілим
+    S.sel.start = p; clampSel("end");
+  } else {
+    if (p <= S.sel.start + .05) S.sel.start = p - len;     // перед початком — так само
+    S.sel.end = p; clampSel("start");
+  }
+  redraw(); previewEdge(edge);
+}
+$("bSetStart").onclick = () => setEdgeHere("start");
+$("bSetEnd").onclick = () => setEdgeHere("end");
+
+const typing = el => el.tagName === "INPUT" && /^(number|text)$/.test(el.type);
 addEventListener("keydown", e => {
-  if (!S.buf || /INPUT/.test(e.target.tagName)) return;
-  if (e.code === "Space") { e.preventDefault(); S.playing ? stop() : playSel(); }
+  if (!S.buf || typing(e.target)) return;
+  if (e.code === "Space") { e.preventDefault(); S.playing ? stop() : resume(); }
+  else if (e.code === "KeyP") { e.preventDefault(); S.playing ? pause() : resume(); }       // на укр. розкладці «з»
+  else if (e.code === "Escape") stop();
+  else if (e.code === "BracketLeft") { e.preventDefault(); setEdgeHere("start"); }  // фізична клавіша: на укр. розкладці це «х»
+  else if (e.code === "BracketRight") { e.preventDefault(); setEdgeHere("end"); }   // і «ї»
+  else if (e.code === "KeyZ" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); undo(); }
 });
+// інакше пробіл на кнопці у фокусі ще й «натисне» її на keyup і перезапустить звук
+addEventListener("keyup", e => { if (S.buf && e.code === "Space" && !typing(e.target)) e.preventDefault(); });
 
 /* ------------------------------------------------------------ рендер 8 кГц */
 
@@ -607,21 +722,51 @@ async function renderProcessed() {
 
 function stop() {
   if (S.src) { try { S.src.stop(); } catch (e) {} S.src = null; }
-  S.playing = false;
+  S.playing = false; S.paused = null;
   cancelAnimationFrame(S.raf);
   $("playhead").style.display = "none";
+  $("iPos").textContent = fmt(S.cursor);
+  syncPauseBtn();
+}
+// Пауза: курсор стає туди, де грало, — «Продовжити» (і пробіл) підуть саме звідти.
+function pause() {
+  if (!S.playing) return;
+  const n = S.node, el = S.ac.currentTime - S.playT0;
+  stop();
+  S.cursor = n.fromTime + el;
+  S.paused = { ...n, offset: n.offset + el, dur: n.dur === undefined ? undefined : Math.max(0, n.dur - el) };
+  syncCursor(); syncPauseBtn();
+}
+// Оригінал продовжуємо від курсора з поточними межами — їх могли пересунути під час паузи.
+// «Як на телефоні» — з того ж місця тієї ж обробки, якщо ні межі, ні обробку не чіпали.
+function resume() {
+  const p = S.paused;
+  if (p && p.cache && p.cache === S.cache) startNode(p.buffer, p.offset, p.dur, S.cursor, p.cache);
+  else playAt(S.cursor);
+}
+function syncPauseBtn() {
+  $("bPause").textContent = S.playing ? "⏸ Пауза" : S.paused ? "▶ Продовжити" : "▶ З курсора";
 }
 function tick() {
   if (!S.playing) return;
   const t = S.playFrom + (S.ac.currentTime - S.playT0);
+  const W = wrap.clientWidth;
+  let x = t2x(t);
+  // у зумі гортаємо вид слідом за звуком — але лише якщо його й так було видно
+  if (S.phSeen && x > W && !drag && S.view.dur < S.buf.duration) {
+    setView(t - S.view.dur * .05, S.view.dur); x = t2x(t);
+  }
+  S.phSeen = x >= 0 && x <= W;
   const ph = $("playhead");
-  const x = t2x(t);
-  ph.style.display = (x >= 0 && x <= wrap.clientWidth) ? "block" : "none";
+  ph.style.display = S.phSeen ? "block" : "none";
   ph.style.left = x + "px";
+  $("iPos").textContent = fmt(t);
   S.raf = requestAnimationFrame(tick);
 }
-function startNode(buffer, offset, dur, fromTime) {
+// cache — рендер «як на телефоні», з якого зроблено buffer (для оригіналу немає)
+function startNode(buffer, offset, dur, fromTime, cache) {
   stop();
+  S.node = { buffer, offset, dur, fromTime, cache };
   if (S.ac.state === "suspended") S.ac.resume();
   const src = S.ac.createBufferSource();
   src.buffer = buffer;
@@ -630,12 +775,27 @@ function startNode(buffer, offset, dur, fromTime) {
   src.start(0, offset, dur);
   S.src = src; S.playing = true;
   S.playT0 = S.ac.currentTime; S.playFrom = fromTime;
+  S.phSeen = t2x(fromTime) >= 0 && t2x(fromTime) <= wrap.clientWidth;
+  syncPauseBtn();
   tick();
 }
-$("bPlay").onclick = playSel;
+$("bPlay").onclick = () => playAt(S.sel.start);
+$("bPause").onclick = () => S.playing ? pause() : resume();
 $("bStop").onclick = stop;
-function playSel() {
-  startNode(S.buf, S.sel.start, S.sel.end - S.sel.start, S.sel.start);
+
+// Оригінал з моменту t і курсор туди ж (пробіл повторить саме цей шматок).
+// Грає до кінця виділення, якщо t перед ним, інакше — далі по файлу: так чути, що є за межею.
+function playAt(t) {
+  const D = S.buf.duration;
+  t = Math.max(0, Math.min(t, D - .02));
+  S.cursor = t;
+  syncCursor();
+  const until = t < S.sel.end - .02 ? S.sel.end : D;
+  startNode(S.buf, t, until - t, t);
+}
+// Прослухати межу: початок — з нього, кінець — останні PREROLL секунд перед ним.
+function previewEdge(edge) {
+  playAt(edge === "end" ? Math.max(S.sel.start, S.sel.end - PREROLL) : S.sel.start);
 }
 $("bPhone").onclick = async () => {
   $("bPhone").disabled = true;
@@ -645,7 +805,7 @@ $("bPhone").onclick = async () => {
     const b = S.ac.createBuffer(1, pcm.length, GS.SAMPLE_RATE);
     const d = b.getChannelData(0);
     for (let i = 0; i < pcm.length; i++) d[i] = pcm[i] / 32768;
-    startNode(b, 0, undefined, S.sel.start);
+    startNode(b, 0, undefined, S.sel.start, r);
     log(`Прев'ю 8 кГц G.711 μ-law: ${r.seconds.toFixed(2)} с, пік ${r.peakDb.toFixed(1)} dBFS — саме те, що почує телефон.`);
   } catch (e) { log("Помилка прев'ю: " + e.message, "err"); }
   $("bPhone").disabled = false;
